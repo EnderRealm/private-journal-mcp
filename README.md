@@ -16,6 +16,12 @@ A comprehensive MCP (Model Context Protocol) server that provides Claude with pr
 - **Local AI processing**: Uses @xenova/transformers - no external API calls required
 - **Automatic indexing**: Embeddings generated for all entries on startup and ongoing
 
+### Obsidian Integration
+- **Vault sync**: Store user journal in your Obsidian vault for cross-machine sync
+- **Auto-discovery**: Automatically finds your vault from Obsidian's config
+- **Smart caching**: Embeddings stored locally (not synced) for efficiency
+- **Rich frontmatter**: Tags, project info, and agent metadata for Obsidian filtering
+
 ### Privacy & Performance
 - **Completely private**: All processing happens locally, no data leaves your machine
 - **Fast operation**: Optimized file structure and in-memory similarity calculations
@@ -29,7 +35,7 @@ This server is run directly from GitHub using `npx` - no installation required.
 
 #### Claude Code (One-liner)
 ```bash
-claude mcp add-json private-journal '{"type":"stdio","command":"npx","args":["github:obra/private-journal-mcp"]}' -s user
+claude mcp add-json private-journal '{"type":"stdio","command":"npx","args":["github:EnderRealm/private-journal-mcp"]}' -s user
 ```
 
 #### Manual Configuration
@@ -40,13 +46,37 @@ Add to your MCP settings (e.g., Claude Desktop configuration):
   "mcpServers": {
     "private-journal": {
       "command": "npx",
-      "args": ["github:obra/private-journal-mcp"]
+      "args": ["github:EnderRealm/private-journal-mcp"]
     }
   }
 }
 ```
 
 The server will automatically find a suitable location for the journal files.
+
+### Obsidian Integration
+
+To store your user journal in an Obsidian vault (for sync across machines):
+
+```json
+{
+  "mcpServers": {
+    "private-journal": {
+      "command": "npx",
+      "args": ["github:EnderRealm/private-journal-mcp"],
+      "env": {
+        "AGENTIC_JOURNAL_VAULT": "your-vault-name"
+      }
+    }
+  }
+}
+```
+
+The server will automatically discover your vault location from Obsidian's config. Journal entries will be stored in `your-vault/agentic-journal/` with embeddings cached locally (not synced).
+
+**Environment Variables:**
+- `AGENTIC_JOURNAL_VAULT`: Name of your Obsidian vault to use for user journal
+- `AGENTIC_JOURNAL_PATH`: Explicit path override (ignores vault discovery)
 
 ## MCP Tools
 
@@ -88,13 +118,29 @@ Browse recent entries chronologically:
 │   └── ...
 ```
 
-### User Journal (global)
+### User Journal (default)
 ```
 ~/.private-journal/
 ├── 2025-05-31/
 │   ├── 14-32-15-789012.md          # Personal thoughts entry
 │   ├── 14-32-15-789012.embedding   # Search index
 │   └── ...
+```
+
+### User Journal (Obsidian mode)
+When `AGENTIC_JOURNAL_VAULT` is set, entries go to your vault and embeddings to local cache:
+```
+# Journal entries (synced via Obsidian)
+your-vault/agentic-journal/
+├── 2025-05-31/
+│   ├── 14-32-15-789012.md
+│   └── ...
+
+# Embeddings (local cache, not synced)
+~/.cache/private-journal/embeddings/    # macOS/Linux
+%LOCALAPPDATA%/private-journal/embeddings/  # Windows
+├── 2025-05-31--14-32-15-789012.embedding
+└── ...
 ```
 
 ### Entry Format
@@ -105,6 +151,12 @@ Each markdown file contains YAML frontmatter and structured sections:
 title: "2:30:45 PM - May 31, 2025"
 date: 2025-05-31T14:30:45.123Z
 timestamp: 1717160645123
+project: git@github.com:user/repo.git
+agent: claude-code:1.0.0
+tags:
+  - agentic-journal
+  - feelings
+  - technical-insights
 ---
 
 ## Feelings
@@ -115,6 +167,8 @@ I'm excited about this new search feature...
 
 Vector embeddings provide semantic understanding...
 ```
+
+The `project` and `agent` fields are automatically captured. Tags include `agentic-journal` plus the sections present in each entry, making it easy to filter in Obsidian.
 
 ## Development
 
