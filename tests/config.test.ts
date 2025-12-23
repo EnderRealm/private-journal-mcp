@@ -2,7 +2,7 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
-import { getObsidianConfigPath, parseObsidianConfig, getObsidianVaults, isObsidianMode, getUserJournalPath, getEmbeddingCachePath, getEmbeddingPathForFile } from '../src/config';
+import { getObsidianConfigPath, parseObsidianConfig, getObsidianVaults, isObsidianMode, getUserJournalPath, getEmbeddingCachePath, getEmbeddingPathForFile, getProjectInfo } from '../src/config';
 
 describe('Obsidian config utilities', () => {
   let originalEnv: NodeJS.ProcessEnv;
@@ -274,6 +274,52 @@ describe('Obsidian config utilities', () => {
       const result = getEmbeddingPathForFile(mdPath, false);
 
       expect(result).toBe('/project/.private-journal/2025-12-22/14-30-45-123456.embedding');
+    });
+  });
+
+  describe('getProjectInfo', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'project-test-'));
+    });
+
+    afterEach(async () => {
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    test('returns git remote URL when in git repo', async () => {
+      // Create a mock git config
+      const gitDir = path.join(tempDir, '.git');
+      await fs.mkdir(gitDir, { recursive: true });
+      await fs.writeFile(path.join(gitDir, 'config'), `
+[remote "origin"]
+	url = git@github.com:user/repo.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+`);
+
+      const result = await getProjectInfo(tempDir);
+
+      expect(result).toBe('git@github.com:user/repo.git');
+    });
+
+    test('returns folder name when not in git repo', async () => {
+      const result = await getProjectInfo(tempDir);
+
+      expect(result).toBe(path.basename(tempDir));
+    });
+
+    test('returns folder name when git config has no remote', async () => {
+      const gitDir = path.join(tempDir, '.git');
+      await fs.mkdir(gitDir, { recursive: true });
+      await fs.writeFile(path.join(gitDir, 'config'), `
+[core]
+	bare = false
+`);
+
+      const result = await getProjectInfo(tempDir);
+
+      expect(result).toBe(path.basename(tempDir));
     });
   });
 });

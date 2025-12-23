@@ -120,3 +120,24 @@ export function getEmbeddingPathForFile(mdPath: string, isUserJournal: boolean):
   // Default: alongside md file
   return mdPath.replace(/\.md$/, '.embedding');
 }
+
+export async function getProjectInfo(projectPath?: string): Promise<string> {
+  const cwd = projectPath || process.cwd();
+
+  try {
+    // Try to read git config
+    const gitConfigPath = path.join(cwd, '.git', 'config');
+    const gitConfig = await fs.readFile(gitConfigPath, 'utf8');
+
+    // Parse remote origin URL
+    const remoteMatch = gitConfig.match(/\[remote "origin"\][^\[]*url\s*=\s*(.+)/);
+    if (remoteMatch && remoteMatch[1]) {
+      return remoteMatch[1].trim();
+    }
+  } catch {
+    // Not a git repo or no remote
+  }
+
+  // Fallback to folder name
+  return path.basename(cwd);
+}
