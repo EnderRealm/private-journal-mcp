@@ -157,7 +157,7 @@ export class SearchService {
     try {
       return await fs.readFile(filePath, 'utf8');
     } catch (error) {
-      if ((error as any)?.code === 'ENOENT') {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
         return null;
       }
       throw error;
@@ -194,7 +194,7 @@ export class SearchService {
         }
       }
     } catch (error) {
-      if ((error as any)?.code !== 'ENOENT') {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
         console.error(`Failed to read embeddings from cache ${cachePath}:`, error);
       }
       // Return empty array if directory doesn't exist
@@ -236,7 +236,7 @@ export class SearchService {
         }
       }
     } catch (error) {
-      if ((error as any)?.code !== 'ENOENT') {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
         console.error(`Failed to read embeddings from ${basePath}:`, error);
       }
       // Return empty array if directory doesn't exist

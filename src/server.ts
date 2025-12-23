@@ -8,7 +8,6 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { JournalManager } from './journal.js';
-import { ProcessFeelingsRequest, ProcessThoughtsRequest } from './types.js';
 import { SearchService } from './search.js';
 import { getProjectInfo } from './config.js';
 
