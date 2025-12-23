@@ -4,7 +4,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { JournalEntry } from './types.js';
-import { resolveUserJournalPath } from './paths.js';
+import { getUserJournalPath } from './config.js';
 import { EmbeddingService, EmbeddingData } from './embeddings.js';
 
 export interface JournalMetadata {
@@ -14,13 +14,33 @@ export interface JournalMetadata {
 
 export class JournalManager {
   private projectJournalPath: string;
-  private userJournalPath: string;
+  private explicitUserPath: string | undefined;
+  private userJournalPath: string | null = null;
+  private userJournalPathPromise: Promise<string> | null = null;
   private embeddingService: EmbeddingService;
 
   constructor(projectJournalPath: string, userJournalPath?: string) {
     this.projectJournalPath = projectJournalPath;
-    this.userJournalPath = userJournalPath || resolveUserJournalPath();
+    this.explicitUserPath = userJournalPath;
     this.embeddingService = EmbeddingService.getInstance();
+  }
+
+  private async resolveUserJournalPath(): Promise<string> {
+    if (this.userJournalPath) {
+      return this.userJournalPath;
+    }
+
+    if (!this.userJournalPathPromise) {
+      // Check if explicit path was provided in constructor
+      if (this.explicitUserPath) {
+        this.userJournalPath = this.explicitUserPath;
+        return this.userJournalPath;
+      }
+      this.userJournalPathPromise = getUserJournalPath();
+    }
+
+    this.userJournalPath = await this.userJournalPathPromise;
+    return this.userJournalPath;
   }
 
   async writeEntry(content: string): Promise<void> {
@@ -67,7 +87,8 @@ export class JournalManager {
     // Write user thoughts to user directory
     const hasUserContent = Object.values(userThoughts).some(value => value !== undefined);
     if (hasUserContent) {
-      await this.writeThoughtsToLocation(userThoughts, timestamp, this.userJournalPath, metadata);
+      const userPath = await this.resolveUserJournalPath();
+      await this.writeThoughtsToLocation(userThoughts, timestamp, userPath, metadata);
     }
   }
 
@@ -235,7 +256,8 @@ ${sections.join('\n\n')}
       };
 
       // Determine if this is a user journal by checking if path starts with userJournalPath
-      const isUserJournal = filePath.startsWith(this.userJournalPath);
+      const userPath = await this.resolveUserJournalPath();
+      const isUserJournal = filePath.startsWith(userPath);
 
       await this.embeddingService.saveEmbedding(filePath, embeddingData, isUserJournal);
     } catch (error) {
@@ -246,16 +268,17 @@ ${sections.join('\n\n')}
 
   async generateMissingEmbeddings(): Promise<number> {
     let count = 0;
-    const paths = [this.projectJournalPath, this.userJournalPath];
-    
+    const userPath = await this.resolveUserJournalPath();
+    const paths = [this.projectJournalPath, userPath];
+
     for (const basePath of paths) {
       try {
         const dayDirs = await fs.readdir(basePath);
-        
+
         for (const dayDir of dayDirs) {
           const dayPath = path.join(basePath, dayDir);
           const stat = await fs.stat(dayPath);
-          
+
           if (!stat.isDirectory() || !dayDir.match(/^\d{4}-\d{2}-\d{2}$/)) {
             continue;
           }
@@ -266,7 +289,7 @@ ${sections.join('\n\n')}
           for (const mdFile of mdFiles) {
             const mdPath = path.join(dayPath, mdFile);
             const embeddingPath = mdPath.replace(/\.md$/, '.embedding');
-            
+
             try {
               await fs.access(embeddingPath);
               // Embedding already exists, skip
@@ -286,7 +309,7 @@ ${sections.join('\n\n')}
         }
       }
     }
-    
+
     return count;
   }
 
