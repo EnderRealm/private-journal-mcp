@@ -7,6 +7,11 @@ import { JournalEntry } from './types.js';
 import { resolveUserJournalPath } from './paths.js';
 import { EmbeddingService, EmbeddingData } from './embeddings.js';
 
+export interface JournalMetadata {
+  project?: string;
+  agent?: string;
+}
+
 export class JournalManager {
   private projectJournalPath: string;
   private userJournalPath: string;
@@ -42,9 +47,9 @@ export class JournalManager {
     user_context?: string;
     technical_insights?: string;
     world_knowledge?: string;
-  }): Promise<void> {
+  }, metadata?: JournalMetadata): Promise<void> {
     const timestamp = new Date();
-    
+
     // Split thoughts into project-local and user-global
     const projectThoughts = { project_notes: thoughts.project_notes };
     const userThoughts = {
@@ -53,16 +58,16 @@ export class JournalManager {
       technical_insights: thoughts.technical_insights,
       world_knowledge: thoughts.world_knowledge
     };
-    
+
     // Write project notes to project directory
     if (projectThoughts.project_notes) {
-      await this.writeThoughtsToLocation(projectThoughts, timestamp, this.projectJournalPath);
+      await this.writeThoughtsToLocation(projectThoughts, timestamp, this.projectJournalPath, metadata);
     }
-    
+
     // Write user thoughts to user directory
     const hasUserContent = Object.values(userThoughts).some(value => value !== undefined);
     if (hasUserContent) {
-      await this.writeThoughtsToLocation(userThoughts, timestamp, this.userJournalPath);
+      await this.writeThoughtsToLocation(userThoughts, timestamp, this.userJournalPath, metadata);
     }
   }
 
@@ -113,18 +118,19 @@ ${content}
       world_knowledge?: string;
     },
     timestamp: Date,
-    basePath: string
+    basePath: string,
+    metadata?: JournalMetadata
   ): Promise<void> {
     const dateString = this.formatDate(timestamp);
     const timeString = this.formatTimestamp(timestamp);
-    
+
     const dayDirectory = path.join(basePath, dateString);
     const fileName = `${timeString}.md`;
     const filePath = path.join(dayDirectory, fileName);
 
     await this.ensureDirectoryExists(dayDirectory);
-    
-    const formattedEntry = this.formatThoughts(thoughts, timestamp);
+
+    const formattedEntry = this.formatThoughts(thoughts, timestamp, metadata);
     await fs.writeFile(filePath, formattedEntry, 'utf8');
 
     // Generate and save embedding
@@ -137,47 +143,71 @@ ${content}
     user_context?: string;
     technical_insights?: string;
     world_knowledge?: string;
-  }, timestamp: Date): string {
-    const timeDisplay = timestamp.toLocaleTimeString('en-US', { 
-      hour12: true, 
-      hour: 'numeric', 
-      minute: '2-digit', 
-      second: '2-digit' 
+  }, timestamp: Date, metadata?: JournalMetadata): string {
+    const timeDisplay = timestamp.toLocaleTimeString('en-US', {
+      hour12: true,
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit'
     });
-    const dateDisplay = timestamp.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    const dateDisplay = timestamp.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
 
     const sections = [];
-    
+
     if (thoughts.feelings) {
       sections.push(`## Feelings\n\n${thoughts.feelings}`);
     }
-    
+
     if (thoughts.project_notes) {
       sections.push(`## Project Notes\n\n${thoughts.project_notes}`);
     }
-    
+
     if (thoughts.user_context) {
       sections.push(`## User Context\n\n${thoughts.user_context}`);
     }
-    
+
     if (thoughts.technical_insights) {
       sections.push(`## Technical Insights\n\n${thoughts.technical_insights}`);
     }
-    
+
     if (thoughts.world_knowledge) {
       sections.push(`## World Knowledge\n\n${thoughts.world_knowledge}`);
     }
 
-    return `---
+    // Build tags array - always include agentic-journal plus section names
+    const tags = ['agentic-journal'];
+    if (thoughts.feelings) tags.push('feelings');
+    if (thoughts.project_notes) tags.push('project-notes');
+    if (thoughts.user_context) tags.push('user-context');
+    if (thoughts.technical_insights) tags.push('technical-insights');
+    if (thoughts.world_knowledge) tags.push('world-knowledge');
+
+    // Build frontmatter
+    let frontmatter = `---
 title: "${timeDisplay} - ${dateDisplay}"
 date: ${timestamp.toISOString()}
-timestamp: ${timestamp.getTime()}
----
+timestamp: ${timestamp.getTime()}`;
 
+    if (metadata?.project) {
+      frontmatter += `\nproject: ${metadata.project}`;
+    }
+
+    if (metadata?.agent) {
+      frontmatter += `\nagent: ${metadata.agent}`;
+    }
+
+    frontmatter += '\ntags:\n';
+    tags.forEach(tag => {
+      frontmatter += `  - ${tag}\n`;
+    });
+
+    frontmatter += '---\n';
+
+    return `${frontmatter}
 ${sections.join('\n\n')}
 `;
   }

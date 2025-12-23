@@ -295,7 +295,7 @@ describe('JournalManager', () => {
   test('uses explicit user journal path when provided', async () => {
     const customUserDir = await fs.mkdtemp(path.join(os.tmpdir(), 'custom-user-'));
     const customJournalManager = new JournalManager(projectTempDir, customUserDir);
-    
+
     try {
       const thoughts = { feelings: 'Testing custom path' };
       await customJournalManager.writeThoughts(thoughts);
@@ -303,14 +303,84 @@ describe('JournalManager', () => {
       const today = new Date();
       const dateString = getFormattedDate(today);
       const customDayDir = path.join(customUserDir, dateString);
-      
+
       const customFiles = await fs.readdir(customDayDir);
       expect(customFiles).toHaveLength(1);
-      
+
       const customContent = await fs.readFile(path.join(customDayDir, customFiles[0]), 'utf8');
       expect(customContent).toContain('Testing custom path');
     } finally {
       await fs.rm(customUserDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('Enhanced frontmatter format', () => {
+  let projectTempDir: string;
+  let userTempDir: string;
+  let journalManager: JournalManager;
+  let originalHome: string | undefined;
+
+  beforeEach(async () => {
+    projectTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'journal-fm-test-'));
+    userTempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'journal-fm-user-'));
+    originalHome = process.env.HOME;
+    process.env.HOME = userTempDir;
+    journalManager = new JournalManager(projectTempDir);
+  });
+
+  afterEach(async () => {
+    if (originalHome !== undefined) {
+      process.env.HOME = originalHome;
+    } else {
+      delete process.env.HOME;
+    }
+    await fs.rm(projectTempDir, { recursive: true, force: true });
+    await fs.rm(userTempDir, { recursive: true, force: true });
+  });
+
+  test('includes project field in frontmatter', async () => {
+    await journalManager.writeThoughts({ feelings: 'Test feeling' }, { project: 'git@github.com:user/repo.git' });
+
+    const today = new Date();
+    const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const userDayDir = path.join(userTempDir, '.private-journal', dateString);
+    const files = await fs.readdir(userDayDir);
+    const mdFile = files.find(f => f.endsWith('.md'));
+    const content = await fs.readFile(path.join(userDayDir, mdFile!), 'utf8');
+
+    expect(content).toContain('project: git@github.com:user/repo.git');
+  });
+
+  test('includes agent field in frontmatter', async () => {
+    await journalManager.writeThoughts({ feelings: 'Test' }, { agent: 'claude-code:2.0.67' });
+
+    const today = new Date();
+    const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const userDayDir = path.join(userTempDir, '.private-journal', dateString);
+    const files = await fs.readdir(userDayDir);
+    const mdFile = files.find(f => f.endsWith('.md'));
+    const content = await fs.readFile(path.join(userDayDir, mdFile!), 'utf8');
+
+    expect(content).toContain('agent: claude-code:2.0.67');
+  });
+
+  test('includes tags with agentic-journal and section names', async () => {
+    await journalManager.writeThoughts({
+      feelings: 'Test feeling',
+      technical_insights: 'Test insight'
+    });
+
+    const today = new Date();
+    const dateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const userDayDir = path.join(userTempDir, '.private-journal', dateString);
+    const files = await fs.readdir(userDayDir);
+    const mdFile = files.find(f => f.endsWith('.md'));
+    const content = await fs.readFile(path.join(userDayDir, mdFile!), 'utf8');
+
+    expect(content).toContain('tags:');
+    expect(content).toContain('  - agentic-journal');
+    expect(content).toContain('  - feelings');
+    expect(content).toContain('  - technical-insights');
   });
 });
