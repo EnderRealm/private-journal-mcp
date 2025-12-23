@@ -88,3 +88,35 @@ export async function getUserJournalPath(obsidianConfigPath?: string): Promise<s
   // Priority 3: Default behavior
   return resolveJournalPath('.private-journal', false);
 }
+
+export function getEmbeddingCachePath(): string {
+  // Windows
+  if (process.env.LOCALAPPDATA) {
+    return path.win32.join(process.env.LOCALAPPDATA, 'private-journal', 'embeddings');
+  }
+
+  // Unix
+  const home = process.env.HOME || '/tmp';
+  return path.posix.join(home, '.cache', 'private-journal', 'embeddings');
+}
+
+export function getEmbeddingPathForFile(mdPath: string, isUserJournal: boolean): string {
+  // Only use cache for user journal in Obsidian mode
+  if (isUserJournal && isObsidianMode()) {
+    const cachePath = getEmbeddingCachePath();
+
+    // Extract date and filename from path: .../2025-12-22/14-30-45-123456.md
+    const filename = path.basename(mdPath, '.md');
+    const dateDir = path.basename(path.dirname(mdPath));
+
+    // Create stable embedding filename: 2025-12-22--14-30-45-123456.embedding
+    // Use win32 join if LOCALAPPDATA is set (Windows), otherwise posix
+    if (process.env.LOCALAPPDATA) {
+      return path.win32.join(cachePath, `${dateDir}--${filename}.embedding`);
+    }
+    return path.posix.join(cachePath, `${dateDir}--${filename}.embedding`);
+  }
+
+  // Default: alongside md file
+  return mdPath.replace(/\.md$/, '.embedding');
+}

@@ -2,7 +2,7 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
-import { getObsidianConfigPath, parseObsidianConfig, getObsidianVaults, isObsidianMode, getUserJournalPath } from '../src/config';
+import { getObsidianConfigPath, parseObsidianConfig, getObsidianVaults, isObsidianMode, getUserJournalPath, getEmbeddingCachePath, getEmbeddingPathForFile } from '../src/config';
 
 describe('Obsidian config utilities', () => {
   let originalEnv: NodeJS.ProcessEnv;
@@ -220,6 +220,60 @@ describe('Obsidian config utilities', () => {
       const result = await getUserJournalPath();
 
       expect(result).toBe(path.join('/Users/test', '.private-journal'));
+    });
+  });
+
+  describe('getEmbeddingCachePath', () => {
+    test('returns LOCALAPPDATA path on Windows', () => {
+      process.env.LOCALAPPDATA = 'C:\\Users\\test\\AppData\\Local';
+
+      const result = getEmbeddingCachePath();
+
+      expect(result).toBe('C:\\Users\\test\\AppData\\Local\\private-journal\\embeddings');
+    });
+
+    test('returns ~/.cache path on Unix when LOCALAPPDATA not set', () => {
+      delete process.env.LOCALAPPDATA;
+      process.env.HOME = '/Users/test';
+
+      const result = getEmbeddingCachePath();
+
+      expect(result).toBe('/Users/test/.cache/private-journal/embeddings');
+    });
+  });
+
+  describe('getEmbeddingPathForFile', () => {
+    beforeEach(() => {
+      delete process.env.AGENTIC_JOURNAL_VAULT;
+    });
+
+    test('returns path alongside md file in default mode', () => {
+      const mdPath = '/path/to/journal/2025-12-22/14-30-45-123456.md';
+
+      const result = getEmbeddingPathForFile(mdPath, false);
+
+      expect(result).toBe('/path/to/journal/2025-12-22/14-30-45-123456.embedding');
+    });
+
+    test('returns cache path in Obsidian mode for user journal', () => {
+      process.env.AGENTIC_JOURNAL_VAULT = 'macbeth';
+      process.env.LOCALAPPDATA = 'C:\\Users\\test\\AppData\\Local';
+
+      const mdPath = 'C:\\Users\\test\\Documents\\Obsidian\\macbeth\\agentic-journal\\2025-12-22\\14-30-45-123456.md';
+
+      const result = getEmbeddingPathForFile(mdPath, true);
+
+      expect(result).toBe('C:\\Users\\test\\AppData\\Local\\private-journal\\embeddings\\2025-12-22--14-30-45-123456.embedding');
+    });
+
+    test('returns path alongside md file for project journal even in Obsidian mode', () => {
+      process.env.AGENTIC_JOURNAL_VAULT = 'macbeth';
+
+      const mdPath = '/project/.private-journal/2025-12-22/14-30-45-123456.md';
+
+      const result = getEmbeddingPathForFile(mdPath, false);
+
+      expect(result).toBe('/project/.private-journal/2025-12-22/14-30-45-123456.embedding');
     });
   });
 });
