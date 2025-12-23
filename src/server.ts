@@ -7,9 +7,9 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { JournalManager } from './journal';
-import { ProcessFeelingsRequest, ProcessThoughtsRequest } from './types';
-import { SearchService } from './search';
+import { JournalManager } from './journal.js';
+import { ProcessFeelingsRequest, ProcessThoughtsRequest } from './types.js';
+import { SearchService } from './search.js';
 
 export class PrivateJournalServer {
   private server: Server;
@@ -206,8 +206,8 @@ export class PrivateJournalServer {
             content: [
               {
                 type: 'text',
-                text: results.length > 0 
-                  ? `Found ${results.length} relevant entries:\n\n${results.map((result, i) => 
+                text: results.length > 0
+                  ? `Found ${results.length} relevant entries:\n\n${results.map((result: { score: number; timestamp: number; type: string; sections: string[]; path: string; excerpt: string }, i: number) =>
                       `${i + 1}. [Score: ${result.score.toFixed(3)}] ${new Date(result.timestamp).toLocaleDateString()} (${result.type})\n` +
                       `   Sections: ${result.sections.join(', ')}\n` +
                       `   Path: ${result.path}\n` +
@@ -267,8 +267,8 @@ export class PrivateJournalServer {
             content: [
               {
                 type: 'text',
-                text: results.length > 0 
-                  ? `Recent entries (last ${days} days):\n\n${results.map((result, i) => 
+                text: results.length > 0
+                  ? `Recent entries (last ${days} days):\n\n${results.map((result: { timestamp: number; type: string; sections: string[]; path: string; excerpt: string }, i: number) =>
                       `${i + 1}. ${new Date(result.timestamp).toLocaleDateString()} (${result.type})\n` +
                       `   Sections: ${result.sections.join(', ')}\n` +
                       `   Path: ${result.path}\n` +
