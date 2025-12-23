@@ -38,7 +38,7 @@ This server is run directly from GitHub using `npx` - no installation required.
 claude mcp add-json private-journal '{"type":"stdio","command":"npx","args":["github:EnderRealm/private-journal-mcp"]}' -s user
 ```
 
-#### Manual Configuration
+#### Manual Configuration (macOS/Linux)
 Add to your MCP settings (e.g., Claude Desktop configuration):
 
 ```json
@@ -52,18 +52,50 @@ Add to your MCP settings (e.g., Claude Desktop configuration):
 }
 ```
 
+#### Manual Configuration (Windows)
+On Windows, use `cmd /c` to run npx:
+
+```json
+{
+  "mcpServers": {
+    "private-journal": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "github:EnderRealm/private-journal-mcp"]
+    }
+  }
+}
+```
+
 The server will automatically find a suitable location for the journal files.
 
 ### Obsidian Integration
 
 To store your user journal in an Obsidian vault (for sync across machines):
 
+#### macOS/Linux
 ```json
 {
   "mcpServers": {
     "private-journal": {
       "command": "npx",
       "args": ["github:EnderRealm/private-journal-mcp"],
+      "env": {
+        "AGENTIC_JOURNAL_VAULT": "your-vault-name"
+      }
+    }
+  }
+}
+```
+
+#### Windows
+```json
+{
+  "mcpServers": {
+    "private-journal": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "github:EnderRealm/private-journal-mcp"],
       "env": {
         "AGENTIC_JOURNAL_VAULT": "your-vault-name"
       }
