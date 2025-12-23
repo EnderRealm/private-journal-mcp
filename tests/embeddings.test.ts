@@ -242,3 +242,76 @@ describe('Embedding storage in Obsidian mode', () => {
     expect(exists).toBe(true);
   });
 });
+
+describe('Search with Obsidian mode cache', () => {
+  let tempDir: string;
+  let userJournalDir: string;
+  let cachePath: string;
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(async () => {
+    originalEnv = { ...process.env };
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'search-obsidian-test-'));
+
+    // Set up Obsidian mode
+    process.env.AGENTIC_JOURNAL_VAULT = 'testvault';
+    process.env.LOCALAPPDATA = tempDir;
+
+    userJournalDir = path.join(tempDir, 'vault', 'agentic-journal');
+    cachePath = path.join(tempDir, 'private-journal', 'embeddings');
+  });
+
+  afterEach(async () => {
+    process.env = originalEnv;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  test('search finds user journal entries when embeddings are in cache', async () => {
+    // Create user journal markdown file
+    const dateDir = path.join(userJournalDir, '2025-12-22');
+    await fs.mkdir(dateDir, { recursive: true });
+    const mdPath = path.join(dateDir, '14-30-45-123456.md');
+
+    const markdown = `---
+title: "Test Feelings"
+date: 2025-12-22T14:30:45.123Z
+timestamp: 1734878445123
+---
+
+## Feelings
+
+I'm frustrated with this search bug in Obsidian mode.`;
+
+    await fs.writeFile(mdPath, markdown, 'utf8');
+
+    // Generate a real embedding for the text
+    const embeddingService = EmbeddingService.getInstance();
+    const embedding = await embeddingService.generateEmbedding("I'm frustrated with this search bug in Obsidian mode.");
+
+    // Create embedding in cache (flat structure)
+    await fs.mkdir(cachePath, { recursive: true });
+    const embeddingPath = path.join(cachePath, '2025-12-22--14-30-45-123456.embedding');
+
+    const embeddingData = {
+      embedding,
+      text: "I'm frustrated with this search bug in Obsidian mode.",
+      sections: ['Feelings'],
+      timestamp: 1734878445123,
+      path: mdPath
+    };
+
+    await fs.writeFile(embeddingPath, JSON.stringify(embeddingData), 'utf8');
+
+    // Search should find the entry
+    const searchService = new SearchService(
+      path.join(tempDir, 'project'),
+      userJournalDir
+    );
+
+    const results = await searchService.search('search bug', { type: 'user' });
+
+    expect(results.length).toBeGreaterThan(0);
+    expect(results[0].text).toContain('frustrated');
+    expect(results[0].type).toBe('user');
+  }, 60000);
+});

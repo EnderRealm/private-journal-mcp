@@ -5,6 +5,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { EmbeddingService, EmbeddingData } from './embeddings.js';
 import { resolveUserJournalPath, resolveProjectJournalPath } from './paths.js';
+import { isObsidianMode, getEmbeddingCachePath } from './config.js';
 
 export interface SearchResult {
   path: string;
@@ -59,7 +60,7 @@ export class SearchService {
     }
 
     if (type === 'both' || type === 'user') {
-      const userEmbeddings = await this.loadEmbeddingsFromPath(this.userPath, 'user');
+      const userEmbeddings = await this.loadUserEmbeddings();
       allEmbeddings.push(...userEmbeddings);
     }
 
@@ -123,7 +124,7 @@ export class SearchService {
     }
 
     if (type === 'both' || type === 'user') {
-      const userEmbeddings = await this.loadEmbeddingsFromPath(this.userPath, 'user');
+      const userEmbeddings = await this.loadUserEmbeddings();
       allEmbeddings.push(...userEmbeddings);
     }
 
@@ -163,19 +164,58 @@ export class SearchService {
     }
   }
 
+  private async loadUserEmbeddings(): Promise<Array<EmbeddingData & { type: 'project' | 'user' }>> {
+    // In Obsidian mode, user embeddings are in cache directory (flat structure)
+    if (isObsidianMode()) {
+      return this.loadEmbeddingsFromCache();
+    }
+
+    // Normal mode: embeddings are in standard directory structure
+    return this.loadEmbeddingsFromPath(this.userPath, 'user');
+  }
+
+  private async loadEmbeddingsFromCache(): Promise<Array<EmbeddingData & { type: 'project' | 'user' }>> {
+    const embeddings: Array<EmbeddingData & { type: 'project' | 'user' }> = [];
+    const cachePath = getEmbeddingCachePath();
+
+    try {
+      const files = await fs.readdir(cachePath);
+      const embeddingFiles = files.filter(file => file.endsWith('.embedding'));
+
+      for (const embeddingFile of embeddingFiles) {
+        try {
+          const embeddingPath = path.join(cachePath, embeddingFile);
+          const content = await fs.readFile(embeddingPath, 'utf8');
+          const embeddingData = JSON.parse(content);
+          embeddings.push({ ...embeddingData, type: 'user' });
+        } catch (error) {
+          console.error(`Failed to load embedding ${embeddingFile}:`, error);
+          // Continue with other files
+        }
+      }
+    } catch (error) {
+      if ((error as any)?.code !== 'ENOENT') {
+        console.error(`Failed to read embeddings from cache ${cachePath}:`, error);
+      }
+      // Return empty array if directory doesn't exist
+    }
+
+    return embeddings;
+  }
+
   private async loadEmbeddingsFromPath(
-    basePath: string, 
+    basePath: string,
     type: 'project' | 'user'
   ): Promise<Array<EmbeddingData & { type: 'project' | 'user' }>> {
     const embeddings: Array<EmbeddingData & { type: 'project' | 'user' }> = [];
 
     try {
       const dayDirs = await fs.readdir(basePath);
-      
+
       for (const dayDir of dayDirs) {
         const dayPath = path.join(basePath, dayDir);
         const stat = await fs.stat(dayPath);
-        
+
         if (!stat.isDirectory() || !dayDir.match(/^\d{4}-\d{2}-\d{2}$/)) {
           continue;
         }
