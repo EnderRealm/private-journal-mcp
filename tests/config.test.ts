@@ -2,7 +2,7 @@
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as os from 'os';
-import { getObsidianConfigPath, parseObsidianConfig, getObsidianVaults } from '../src/config';
+import { getObsidianConfigPath, parseObsidianConfig, getObsidianVaults, isObsidianMode, getUserJournalPath } from '../src/config';
 
 describe('Obsidian config utilities', () => {
   let originalEnv: NodeJS.ProcessEnv;
@@ -144,6 +144,82 @@ describe('Obsidian config utilities', () => {
     test('returns empty object when config file does not exist', async () => {
       const result = await getObsidianVaults('/nonexistent/path/obsidian.json');
       expect(result).toEqual({});
+    });
+  });
+
+  describe('isObsidianMode', () => {
+    test('returns true when AGENTIC_JOURNAL_VAULT is set', () => {
+      process.env.AGENTIC_JOURNAL_VAULT = 'macbeth';
+      expect(isObsidianMode()).toBe(true);
+    });
+
+    test('returns false when AGENTIC_JOURNAL_VAULT is not set', () => {
+      delete process.env.AGENTIC_JOURNAL_VAULT;
+      expect(isObsidianMode()).toBe(false);
+    });
+
+    test('returns false when AGENTIC_JOURNAL_VAULT is empty string', () => {
+      process.env.AGENTIC_JOURNAL_VAULT = '';
+      expect(isObsidianMode()).toBe(false);
+    });
+  });
+
+  describe('getUserJournalPath', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'config-test-'));
+    });
+
+    afterEach(async () => {
+      delete process.env.AGENTIC_JOURNAL_VAULT;
+      delete process.env.AGENTIC_JOURNAL_PATH;
+      await fs.rm(tempDir, { recursive: true, force: true });
+    });
+
+    test('returns default path when no env vars set', async () => {
+      delete process.env.AGENTIC_JOURNAL_VAULT;
+      delete process.env.AGENTIC_JOURNAL_PATH;
+      process.env.HOME = '/Users/test';
+
+      const result = await getUserJournalPath();
+
+      expect(result).toBe(path.join('/Users/test', '.private-journal'));
+    });
+
+    test('returns AGENTIC_JOURNAL_PATH when set', async () => {
+      process.env.AGENTIC_JOURNAL_PATH = '/custom/journal/path';
+
+      const result = await getUserJournalPath();
+
+      expect(result).toBe('/custom/journal/path');
+    });
+
+    test('returns Obsidian vault path with agentic-journal subfolder when AGENTIC_JOURNAL_VAULT set', async () => {
+      // Create mock obsidian config
+      const configPath = path.join(tempDir, 'obsidian.json');
+      const vaultPath = path.join(tempDir, 'vaults', 'macbeth');
+      await fs.mkdir(path.dirname(vaultPath), { recursive: true });
+      await fs.mkdir(vaultPath, { recursive: true });
+
+      await fs.writeFile(configPath, JSON.stringify({
+        vaults: { 'id1': { path: vaultPath } }
+      }));
+
+      process.env.AGENTIC_JOURNAL_VAULT = 'macbeth';
+
+      const result = await getUserJournalPath(configPath);
+
+      expect(result).toBe(path.join(vaultPath, 'agentic-journal'));
+    });
+
+    test('falls back to default when vault not found', async () => {
+      process.env.AGENTIC_JOURNAL_VAULT = 'nonexistent';
+      process.env.HOME = '/Users/test';
+
+      const result = await getUserJournalPath();
+
+      expect(result).toBe(path.join('/Users/test', '.private-journal'));
     });
   });
 });
