@@ -219,13 +219,13 @@ ${sections.join('\n\n')}
   ): Promise<void> {
     try {
       const { text, sections } = this.embeddingService.extractSearchableText(content);
-      
+
       if (text.trim().length === 0) {
         return; // Skip empty entries
       }
 
       const embedding = await this.embeddingService.generateEmbedding(text);
-      
+
       const embeddingData: EmbeddingData = {
         embedding,
         text,
@@ -234,7 +234,10 @@ ${sections.join('\n\n')}
         path: filePath
       };
 
-      await this.embeddingService.saveEmbedding(filePath, embeddingData);
+      // Determine if this is a user journal by checking if path starts with userJournalPath
+      const isUserJournal = filePath.startsWith(this.userJournalPath);
+
+      await this.embeddingService.saveEmbedding(filePath, embeddingData, isUserJournal);
     } catch (error) {
       console.error(`Failed to generate embedding for ${filePath}:`, error);
       // Don't throw - embedding failure shouldn't prevent journal writing

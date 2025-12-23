@@ -8,6 +8,7 @@ import * as os from 'os';
 import { EmbeddingService } from '../src/embeddings';
 import { SearchService } from '../src/search';
 import { JournalManager } from '../src/journal';
+import { getEmbeddingPathForFile } from '../src/config';
 
 describe('Embedding and Search functionality', () => {
   let projectTempDir: string;
@@ -177,4 +178,67 @@ TypeScript interfaces are really powerful for maintaining code quality.`;
       expect(userResults[0].type).toBe('user');
     }
   }, 90000);
+});
+
+describe('Embedding storage in Obsidian mode', () => {
+  let tempDir: string;
+  let originalEnv: NodeJS.ProcessEnv;
+
+  beforeEach(async () => {
+    originalEnv = { ...process.env };
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'embed-obsidian-test-'));
+    delete process.env.AGENTIC_JOURNAL_VAULT;
+  });
+
+  afterEach(async () => {
+    process.env = originalEnv;
+    await fs.rm(tempDir, { recursive: true, force: true });
+  });
+
+  test('saveEmbedding uses cache path for user journal in Obsidian mode', async () => {
+    process.env.AGENTIC_JOURNAL_VAULT = 'testvault';
+    process.env.LOCALAPPDATA = tempDir;
+
+    const embeddingService = EmbeddingService.getInstance();
+    const mdPath = path.join(tempDir, 'agentic-journal', '2025-12-22', '14-30-45-123456.md');
+
+    const embeddingData = {
+      embedding: [0.1, 0.2, 0.3],
+      text: 'test content',
+      sections: ['Feelings'],
+      timestamp: Date.now(),
+      path: mdPath
+    };
+
+    await embeddingService.saveEmbedding(mdPath, embeddingData, true);
+
+    // Verify it was saved to cache, not alongside md
+    const cachePath = path.join(tempDir, 'private-journal', 'embeddings', '2025-12-22--14-30-45-123456.embedding');
+    const exists = await fs.access(cachePath).then(() => true).catch(() => false);
+    expect(exists).toBe(true);
+  });
+
+  test('saveEmbedding uses path alongside md for project journal', async () => {
+    process.env.AGENTIC_JOURNAL_VAULT = 'testvault';
+
+    const embeddingService = EmbeddingService.getInstance();
+    const projectDir = path.join(tempDir, 'project', '.private-journal', '2025-12-22');
+    await fs.mkdir(projectDir, { recursive: true });
+    const mdPath = path.join(projectDir, '14-30-45-123456.md');
+
+    const embeddingData = {
+      embedding: [0.1, 0.2, 0.3],
+      text: 'test content',
+      sections: ['Project Notes'],
+      timestamp: Date.now(),
+      path: mdPath
+    };
+
+    await embeddingService.saveEmbedding(mdPath, embeddingData, false);
+
+    // Verify it was saved alongside md file
+    const embeddingPath = path.join(projectDir, '14-30-45-123456.embedding');
+    const exists = await fs.access(embeddingPath).then(() => true).catch(() => false);
+    expect(exists).toBe(true);
+  });
 });
