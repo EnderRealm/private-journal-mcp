@@ -44,5 +44,29 @@ describe('Obsidian config utilities', () => {
 
       expect(result).toBe('/home/test/.config/obsidian/obsidian.json');
     });
+
+    test('returns temp directory fallback when HOME is missing on Linux', () => {
+      delete process.env.APPDATA;
+      delete process.env.HOME;
+
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+
+      const result = getObsidianConfigPath();
+
+      // Should fall back to /tmp instead of returning invalid path like /.config/obsidian/obsidian.json
+      expect(result).toBe('/tmp/.config/obsidian/obsidian.json');
+    });
+
+    test('returns temp directory fallback when HOME is missing on macOS', () => {
+      delete process.env.APPDATA;
+      delete process.env.HOME;
+
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+
+      const result = getObsidianConfigPath();
+
+      // Should fall back to /tmp instead of returning invalid path
+      expect(result).toBe('/tmp/Library/Application Support/obsidian/obsidian.json');
+    });
   });
 });

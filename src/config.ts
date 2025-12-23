@@ -9,7 +9,8 @@ export function getObsidianConfigPath(): string {
     return path.win32.join(process.env.APPDATA, 'obsidian', 'obsidian.json');
   }
 
-  const home = process.env.HOME || '';
+  // Fallback to /tmp if HOME is not set (prevents invalid paths like /.config/...)
+  const home = process.env.HOME || '/tmp';
 
   // macOS
   if (process.platform === 'darwin') {
