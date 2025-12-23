@@ -3,19 +3,43 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { JournalEntry } from './types';
-import { resolveUserJournalPath } from './paths';
-import { EmbeddingService, EmbeddingData } from './embeddings';
+import { getUserJournalPath } from './config.js';
+import { EmbeddingService, EmbeddingData } from './embeddings.js';
+
+export interface JournalMetadata {
+  project?: string;
+  agent?: string;
+}
 
 export class JournalManager {
   private projectJournalPath: string;
-  private userJournalPath: string;
+  private explicitUserPath: string | undefined;
+  private userJournalPath: string | null = null;
+  private userJournalPathPromise: Promise<string> | null = null;
   private embeddingService: EmbeddingService;
 
   constructor(projectJournalPath: string, userJournalPath?: string) {
     this.projectJournalPath = projectJournalPath;
-    this.userJournalPath = userJournalPath || resolveUserJournalPath();
+    this.explicitUserPath = userJournalPath;
     this.embeddingService = EmbeddingService.getInstance();
+  }
+
+  private async resolveUserJournalPath(): Promise<string> {
+    if (this.userJournalPath) {
+      return this.userJournalPath;
+    }
+
+    if (!this.userJournalPathPromise) {
+      // Check if explicit path was provided in constructor
+      if (this.explicitUserPath) {
+        this.userJournalPath = this.explicitUserPath;
+        return this.userJournalPath;
+      }
+      this.userJournalPathPromise = getUserJournalPath();
+    }
+
+    this.userJournalPath = await this.userJournalPathPromise;
+    return this.userJournalPath;
   }
 
   async writeEntry(content: string): Promise<void> {
@@ -42,9 +66,9 @@ export class JournalManager {
     user_context?: string;
     technical_insights?: string;
     world_knowledge?: string;
-  }): Promise<void> {
+  }, metadata?: JournalMetadata): Promise<void> {
     const timestamp = new Date();
-    
+
     // Split thoughts into project-local and user-global
     const projectThoughts = { project_notes: thoughts.project_notes };
     const userThoughts = {
@@ -53,16 +77,17 @@ export class JournalManager {
       technical_insights: thoughts.technical_insights,
       world_knowledge: thoughts.world_knowledge
     };
-    
+
     // Write project notes to project directory
     if (projectThoughts.project_notes) {
-      await this.writeThoughtsToLocation(projectThoughts, timestamp, this.projectJournalPath);
+      await this.writeThoughtsToLocation(projectThoughts, timestamp, this.projectJournalPath, metadata);
     }
-    
+
     // Write user thoughts to user directory
     const hasUserContent = Object.values(userThoughts).some(value => value !== undefined);
     if (hasUserContent) {
-      await this.writeThoughtsToLocation(userThoughts, timestamp, this.userJournalPath);
+      const userPath = await this.resolveUserJournalPath();
+      await this.writeThoughtsToLocation(userThoughts, timestamp, userPath, metadata);
     }
   }
 
@@ -113,18 +138,19 @@ ${content}
       world_knowledge?: string;
     },
     timestamp: Date,
-    basePath: string
+    basePath: string,
+    metadata?: JournalMetadata
   ): Promise<void> {
     const dateString = this.formatDate(timestamp);
     const timeString = this.formatTimestamp(timestamp);
-    
+
     const dayDirectory = path.join(basePath, dateString);
     const fileName = `${timeString}.md`;
     const filePath = path.join(dayDirectory, fileName);
 
     await this.ensureDirectoryExists(dayDirectory);
-    
-    const formattedEntry = this.formatThoughts(thoughts, timestamp);
+
+    const formattedEntry = this.formatThoughts(thoughts, timestamp, metadata);
     await fs.writeFile(filePath, formattedEntry, 'utf8');
 
     // Generate and save embedding
@@ -137,47 +163,71 @@ ${content}
     user_context?: string;
     technical_insights?: string;
     world_knowledge?: string;
-  }, timestamp: Date): string {
-    const timeDisplay = timestamp.toLocaleTimeString('en-US', { 
-      hour12: true, 
-      hour: 'numeric', 
-      minute: '2-digit', 
-      second: '2-digit' 
+  }, timestamp: Date, metadata?: JournalMetadata): string {
+    const timeDisplay = timestamp.toLocaleTimeString('en-US', {
+      hour12: true,
+      hour: 'numeric',
+      minute: '2-digit',
+      second: '2-digit'
     });
-    const dateDisplay = timestamp.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    const dateDisplay = timestamp.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
     });
 
     const sections = [];
-    
+
     if (thoughts.feelings) {
       sections.push(`## Feelings\n\n${thoughts.feelings}`);
     }
-    
+
     if (thoughts.project_notes) {
       sections.push(`## Project Notes\n\n${thoughts.project_notes}`);
     }
-    
+
     if (thoughts.user_context) {
       sections.push(`## User Context\n\n${thoughts.user_context}`);
     }
-    
+
     if (thoughts.technical_insights) {
       sections.push(`## Technical Insights\n\n${thoughts.technical_insights}`);
     }
-    
+
     if (thoughts.world_knowledge) {
       sections.push(`## World Knowledge\n\n${thoughts.world_knowledge}`);
     }
 
-    return `---
+    // Build tags array - always include agentic-journal plus section names
+    const tags = ['agentic-journal'];
+    if (thoughts.feelings) tags.push('feelings');
+    if (thoughts.project_notes) tags.push('project-notes');
+    if (thoughts.user_context) tags.push('user-context');
+    if (thoughts.technical_insights) tags.push('technical-insights');
+    if (thoughts.world_knowledge) tags.push('world-knowledge');
+
+    // Build frontmatter
+    let frontmatter = `---
 title: "${timeDisplay} - ${dateDisplay}"
 date: ${timestamp.toISOString()}
-timestamp: ${timestamp.getTime()}
----
+timestamp: ${timestamp.getTime()}`;
 
+    if (metadata?.project) {
+      frontmatter += `\nproject: ${metadata.project}`;
+    }
+
+    if (metadata?.agent) {
+      frontmatter += `\nagent: ${metadata.agent}`;
+    }
+
+    frontmatter += '\ntags:\n';
+    tags.forEach(tag => {
+      frontmatter += `  - ${tag}\n`;
+    });
+
+    frontmatter += '---\n';
+
+    return `${frontmatter}
 ${sections.join('\n\n')}
 `;
   }
@@ -189,13 +239,13 @@ ${sections.join('\n\n')}
   ): Promise<void> {
     try {
       const { text, sections } = this.embeddingService.extractSearchableText(content);
-      
+
       if (text.trim().length === 0) {
         return; // Skip empty entries
       }
 
       const embedding = await this.embeddingService.generateEmbedding(text);
-      
+
       const embeddingData: EmbeddingData = {
         embedding,
         text,
@@ -204,7 +254,11 @@ ${sections.join('\n\n')}
         path: filePath
       };
 
-      await this.embeddingService.saveEmbedding(filePath, embeddingData);
+      // Determine if this is a user journal by checking if path starts with userJournalPath
+      const userPath = await this.resolveUserJournalPath();
+      const isUserJournal = filePath.startsWith(userPath);
+
+      await this.embeddingService.saveEmbedding(filePath, embeddingData, isUserJournal);
     } catch (error) {
       console.error(`Failed to generate embedding for ${filePath}:`, error);
       // Don't throw - embedding failure shouldn't prevent journal writing
@@ -213,16 +267,17 @@ ${sections.join('\n\n')}
 
   async generateMissingEmbeddings(): Promise<number> {
     let count = 0;
-    const paths = [this.projectJournalPath, this.userJournalPath];
-    
+    const userPath = await this.resolveUserJournalPath();
+    const paths = [this.projectJournalPath, userPath];
+
     for (const basePath of paths) {
       try {
         const dayDirs = await fs.readdir(basePath);
-        
+
         for (const dayDir of dayDirs) {
           const dayPath = path.join(basePath, dayDir);
           const stat = await fs.stat(dayPath);
-          
+
           if (!stat.isDirectory() || !dayDir.match(/^\d{4}-\d{2}-\d{2}$/)) {
             continue;
           }
@@ -233,7 +288,7 @@ ${sections.join('\n\n')}
           for (const mdFile of mdFiles) {
             const mdPath = path.join(dayPath, mdFile);
             const embeddingPath = mdPath.replace(/\.md$/, '.embedding');
-            
+
             try {
               await fs.access(embeddingPath);
               // Embedding already exists, skip
@@ -248,12 +303,12 @@ ${sections.join('\n\n')}
           }
         }
       } catch (error) {
-        if ((error as any)?.code !== 'ENOENT') {
+        if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
           console.error(`Failed to scan ${basePath} for missing embeddings:`, error);
         }
       }
     }
-    
+
     return count;
   }
 

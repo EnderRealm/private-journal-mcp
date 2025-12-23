@@ -7,14 +7,16 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { JournalManager } from './journal';
-import { ProcessFeelingsRequest, ProcessThoughtsRequest } from './types';
-import { SearchService } from './search';
+import { JournalManager } from './journal.js';
+import { SearchService } from './search.js';
+import { getProjectInfo } from './config.js';
 
 export class PrivateJournalServer {
   private server: Server;
   private journalManager: JournalManager;
   private searchService: SearchService;
+  private agentInfo: string = 'unknown';
+  private projectInfo: string = 'unknown';
 
   constructor(journalPath: string) {
     this.journalManager = new JournalManager(journalPath);
@@ -174,7 +176,10 @@ export class PrivateJournalServer {
         }
 
         try {
-          await this.journalManager.writeThoughts(thoughts);
+          await this.journalManager.writeThoughts(thoughts, {
+            project: this.projectInfo,
+            agent: this.agentInfo
+          });
           return {
             content: [
               {
@@ -206,13 +211,13 @@ export class PrivateJournalServer {
             content: [
               {
                 type: 'text',
-                text: results.length > 0 
-                  ? `Found ${results.length} relevant entries:\n\n${results.map((result, i) => 
-                      `${i + 1}. [Score: ${result.score.toFixed(3)}] ${new Date(result.timestamp).toLocaleDateString()} (${result.type})\n` +
-                      `   Sections: ${result.sections.join(', ')}\n` +
-                      `   Path: ${result.path}\n` +
-                      `   Excerpt: ${result.excerpt}\n`
-                    ).join('\n')}`
+                text: results.length > 0
+                  ? `Found ${results.length} relevant entries:\n\n${results.map((result: { score: number; timestamp: number; type: string; sections: string[]; path: string; excerpt: string }, i: number) =>
+                    `${i + 1}. [Score: ${result.score.toFixed(3)}] ${new Date(result.timestamp).toLocaleDateString()} (${result.type})\n` +
+                    `   Sections: ${result.sections.join(', ')}\n` +
+                    `   Path: ${result.path}\n` +
+                    `   Excerpt: ${result.excerpt}\n`
+                  ).join('\n')}`
                   : 'No relevant entries found.',
               },
             ],
@@ -267,13 +272,13 @@ export class PrivateJournalServer {
             content: [
               {
                 type: 'text',
-                text: results.length > 0 
-                  ? `Recent entries (last ${days} days):\n\n${results.map((result, i) => 
-                      `${i + 1}. ${new Date(result.timestamp).toLocaleDateString()} (${result.type})\n` +
-                      `   Sections: ${result.sections.join(', ')}\n` +
-                      `   Path: ${result.path}\n` +
-                      `   Excerpt: ${result.excerpt}\n`
-                    ).join('\n')}`
+                text: results.length > 0
+                  ? `Recent entries (last ${days} days):\n\n${results.map((result: { timestamp: number; type: string; sections: string[]; path: string; excerpt: string }, i: number) =>
+                    `${i + 1}. ${new Date(result.timestamp).toLocaleDateString()} (${result.type})\n` +
+                    `   Sections: ${result.sections.join(', ')}\n` +
+                    `   Path: ${result.path}\n` +
+                    `   Excerpt: ${result.excerpt}\n`
+                  ).join('\n')}`
                   : `No entries found in the last ${days} days.`,
               },
             ],
@@ -289,6 +294,9 @@ export class PrivateJournalServer {
   }
 
   async run(): Promise<void> {
+    // Capture project info at startup
+    this.projectInfo = await getProjectInfo();
+
     // Generate missing embeddings on startup
     try {
       console.error('Checking for missing embeddings...');
@@ -303,5 +311,11 @@ export class PrivateJournalServer {
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
+
+    // Capture agent info after connection
+    const clientVersion = this.server.getClientVersion();
+    if (clientVersion) {
+      this.agentInfo = `${clientVersion.name}:${clientVersion.version}`;
+    }
   }
 }

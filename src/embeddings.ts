@@ -4,6 +4,7 @@
 import { pipeline, FeatureExtractionPipeline } from '@xenova/transformers';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { getEmbeddingPathForFile } from './config.js';
 
 export interface EmbeddingData {
   embedding: number[];
@@ -88,19 +89,23 @@ export class EmbeddingService {
     return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
   }
 
-  async saveEmbedding(filePath: string, embeddingData: EmbeddingData): Promise<void> {
-    const embeddingPath = filePath.replace(/\.md$/, '.embedding');
+  async saveEmbedding(filePath: string, embeddingData: EmbeddingData, isUserJournal: boolean = false): Promise<void> {
+    const embeddingPath = getEmbeddingPathForFile(filePath, isUserJournal);
+
+    // Ensure directory exists
+    await fs.mkdir(path.dirname(embeddingPath), { recursive: true });
+
     await fs.writeFile(embeddingPath, JSON.stringify(embeddingData, null, 2), 'utf8');
   }
 
-  async loadEmbedding(filePath: string): Promise<EmbeddingData | null> {
-    const embeddingPath = filePath.replace(/\.md$/, '.embedding');
-    
+  async loadEmbedding(filePath: string, isUserJournal: boolean = false): Promise<EmbeddingData | null> {
+    const embeddingPath = getEmbeddingPathForFile(filePath, isUserJournal);
+
     try {
       const content = await fs.readFile(embeddingPath, 'utf8');
       return JSON.parse(content);
     } catch (error) {
-      if ((error as any)?.code === 'ENOENT') {
+      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') {
         return null; // File doesn't exist
       }
       throw error;
