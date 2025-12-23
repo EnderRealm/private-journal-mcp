@@ -10,11 +10,14 @@ import {
 import { JournalManager } from './journal.js';
 import { ProcessFeelingsRequest, ProcessThoughtsRequest } from './types.js';
 import { SearchService } from './search.js';
+import { getProjectInfo } from './config.js';
 
 export class PrivateJournalServer {
   private server: Server;
   private journalManager: JournalManager;
   private searchService: SearchService;
+  private agentInfo: string = 'unknown';
+  private projectInfo: string = 'unknown';
 
   constructor(journalPath: string) {
     this.journalManager = new JournalManager(journalPath);
@@ -174,7 +177,10 @@ export class PrivateJournalServer {
         }
 
         try {
-          await this.journalManager.writeThoughts(thoughts);
+          await this.journalManager.writeThoughts(thoughts, {
+            project: this.projectInfo,
+            agent: this.agentInfo
+          });
           return {
             content: [
               {
@@ -289,6 +295,9 @@ export class PrivateJournalServer {
   }
 
   async run(): Promise<void> {
+    // Capture project info at startup
+    this.projectInfo = await getProjectInfo();
+
     // Generate missing embeddings on startup
     try {
       console.error('Checking for missing embeddings...');
@@ -303,5 +312,11 @@ export class PrivateJournalServer {
 
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
+
+    // Capture agent info after connection
+    const clientVersion = this.server.getClientVersion();
+    if (clientVersion) {
+      this.agentInfo = `${clientVersion.name}:${clientVersion.version}`;
+    }
   }
 }
